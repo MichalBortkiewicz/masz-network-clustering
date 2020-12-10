@@ -3,9 +3,7 @@ import numpy as np
 import networkx as nx
 import matplotlib.pyplot as plt
 
-from sklearn.datasets.samples_generator import make_circles
-from sklearn.cluster import SpectralClustering, KMeans
-from sklearn.metrics import pairwise_distances
+from sklearn.cluster import KMeans
 import seaborn as sns
 
 sns.set()
@@ -25,8 +23,7 @@ def erdos_n_p_model(N, p):
 
 
 def communities(p_inner, p_outer, N=20, n_clusters=4):
-    clusters = [erdos_n_p_model(N, p_inner) for i in range(n_clusters)]
-
+    clusters = [erdos_n_p_model(N, p_inner) for _ in range(n_clusters)]
     big_adj_matrix = erdos_n_p_model(N * n_clusters, p_outer)
 
     for j, i in enumerate([N * cluster for cluster in range(n_clusters)]):
@@ -45,26 +42,33 @@ def compute_laplacian_matrix(adj_matrix):
     return L
 
 
-if __name__ == "__main__":
-    n_clusters = 5
-    eigenvalues_smaller_than = 0.8
+def get_clusters_params(eigen_values, n_clusters):
+    eigen_values = sorted(eigen_values)
+    if n_clusters < 0:
+        n_clusters, eigenvalues_threshold = max([(i, abs(eigen_values[i] - eigen_values[i-1]))
+                                                 for i in range(1, len(eigen_values))], key=lambda x: x[1])
+    else:
+        eigenvalues_threshold = eigen_values[n_clusters]
+    return n_clusters, eigenvalues_threshold
 
-    adj_matrix = communities(0.8, 0.01, N=20, n_clusters=n_clusters)
+
+if __name__ == "__main__":
+    data_n_clusters = 8
+    n_clusters = -1
+
+    adj_matrix = communities(0.8, 0.01, N=40, n_clusters=data_n_clusters)
 
     L = compute_laplacian_matrix(adj_matrix)
     e, v = np.linalg.eig(L)
+    n_clusters, eigenvalues_threshold = get_clusters_params(eigen_values=e, n_clusters=n_clusters)
 
-    # get features for clustering (based on low eigenvalues - corresponding eigenvector contains som
-    # information about the large-scale structure of the network
-    i = np.where(e < eigenvalues_smaller_than)[0]
+    i = np.where(e < eigenvalues_threshold)[0]
     U = np.array(v[:, i[:]])
 
-    # cluster nodes
     km = KMeans(init='k-means++', n_clusters=n_clusters)
     km.fit(U)
 
-    colors = ['r', 'g', 'b', 'y', 'black', 'p']
-    color = np.array(colors)[km.labels_]
+    color = np.array(range(n_clusters))[km.labels_]
 
     G = nx.from_numpy_matrix(adj_matrix)
     plt.figure(figsize=(12, 12))
