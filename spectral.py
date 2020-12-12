@@ -1,3 +1,5 @@
+import os
+
 import pandas as pd
 import numpy as np
 import networkx as nx
@@ -5,8 +7,12 @@ import matplotlib.pyplot as plt
 
 from sklearn.cluster import KMeans
 import seaborn as sns
-
 sns.set()
+
+
+PLOT = False
+DATA_PATH = "./data/adj_matrix"
+RESULTS_PATH = "./data/results"
 
 
 def erdos_n_p_model(N, p):
@@ -52,25 +58,39 @@ def get_clusters_params(eigen_values, n_clusters):
     return n_clusters, eigenvalues_threshold
 
 
+def load_adj_matrix(file):
+    csv_path = os.path.join(DATA_PATH, file)
+    if "NLK" in file:
+        n_clusters = -1
+    else:
+        n_clusters = int(file.split(".csv")[0].split("=")[1])
+    adj_matrix = pd.read_csv(csv_path, header=None).values
+    return adj_matrix, n_clusters
+
+
 if __name__ == "__main__":
-    data_n_clusters = 8
-    n_clusters = -1
+    for file in os.listdir(DATA_PATH):
+        adj_matrix, n_clusters = load_adj_matrix(file)
 
-    adj_matrix = communities(0.8, 0.01, N=40, n_clusters=data_n_clusters)
+        L = compute_laplacian_matrix(adj_matrix)
+        e, v = np.linalg.eig(L)
+        n_clusters, eigenvalues_threshold = get_clusters_params(eigen_values=e, n_clusters=n_clusters)
 
-    L = compute_laplacian_matrix(adj_matrix)
-    e, v = np.linalg.eig(L)
-    n_clusters, eigenvalues_threshold = get_clusters_params(eigen_values=e, n_clusters=n_clusters)
+        i = np.where(e < eigenvalues_threshold)[0]
+        U = np.array(v[:, i[:]])
 
-    i = np.where(e < eigenvalues_threshold)[0]
-    U = np.array(v[:, i[:]])
+        km = KMeans(init='k-means++', n_clusters=n_clusters)
+        km.fit(U)
 
-    km = KMeans(init='k-means++', n_clusters=n_clusters)
-    km.fit(U)
+        results_path = os.path.join(RESULTS_PATH, file)
+        clusters = km.labels_ + 1
+        df = pd.DataFrame(clusters, columns=['clusters'])
+        df.index += 1
+        df.to_csv(results_path, header=False)
 
-    color = np.array(range(n_clusters))[km.labels_]
-
-    G = nx.from_numpy_matrix(adj_matrix)
-    plt.figure(figsize=(12, 12))
-    nx.draw_networkx(G, node_color=color)
-    plt.show()
+        if PLOT:
+            color = np.array(range(n_clusters))[km.labels_]
+            G = nx.from_numpy_matrix(adj_matrix)
+            plt.figure(figsize=(12, 12))
+            nx.draw_networkx(G, node_color=color)
+            plt.show()
